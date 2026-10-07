@@ -1,0 +1,13 @@
+{
+  "name": "mcd-meta-report-build",
+  "private": true,
+  "description": "Builds the McDonald's Azerbaijan Meta performance review deck from the Ads Manager exports",
+  "scripts": {
+    "analysis": "python3 analysis.py",
+    "deck": "node deck.js",
+    "build": "python3 analysis.py && node deck.js"
+  },
+  "dependencies": {
+    "pptxgenjs": "3.12.0"
+  }
+}
