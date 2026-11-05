@@ -1,6 +1,7 @@
-"""Visa x McDonald's (October 2026) Meta report.
+"""Visa x McDonald's (October 2026) report: Meta + YouTube (Google Ads).
 
-data/visa_report.xlsx + data/visa_template.pptx -> visa/McDonalds_AZ_Visa_Report_Oct_2026.pptx (+ .pdf)
+data/visa_report.xlsx (Meta export) + data/visa_youtube.csv (Google Ads campaign row)
++ data/visa_template.pptx -> visa/McDonalds_AZ_Visa_Report_Oct_2026.pptx (+ .pdf)
 
 Run from build/:  python3 visa_report.py
 The PDF is produced with LibreOffice (soffice). For the exact brand font
@@ -21,6 +22,7 @@ from pptx.util import Inches, Pt
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DATA = os.path.join(ROOT, "data", "visa_report.xlsx")
+YT_DATA = os.path.join(ROOT, "data", "visa_youtube.csv")
 TEMPLATE = os.path.join(ROOT, "data", "visa_template.pptx")
 CREATIVE = os.path.join(ROOT, "assets", "visa_post_creative.jpg")
 OUT_DIR = os.path.join(ROOT, "visa")
@@ -36,6 +38,10 @@ MUTED = RGBColor(0x53, 0x56, 0x5A)
 LIGHT = RGBColor(0xF4, 0xF1, 0xEC)
 LINE = RGBColor(0xD9, 0xD9, 0xD6)
 WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+TOTAL_FILL = RGBColor(0xFF, 0xF1, 0xCC)
+# Platform colours (validated pair, distinct from the per-ad red/gold): Meta blue, YouTube brown.
+META_C = RGBColor(0x2F, 0x7F, 0xB5)
+YT_C = RGBColor(0xB0, 0x7A, 0x2A)
 
 L_COVER, L_CONTENT, L_CLOSE = 0, 45, 64
 
@@ -132,10 +138,116 @@ def style_chart_text(chart, size=11):
     chart.font.color.rgb = INK
 
 
+# ---------------------------------------------------------------- reusable blocks
+def data_table(slide, header, rows, widths, top=1.3, height=5.05, size=12, head_fills=None, total_col=None):
+    nr, nc = len(rows) + 1, len(header)
+    gt = slide.shapes.add_table(nr, nc, Inches(0.37), Inches(top), Inches(sum(widths)), Inches(height))
+    tbl = gt.table
+    tblPr = tbl._tbl.tblPr
+    # drop the template's table style banding so our fills are the only fills
+    tblPr.set("bandRow", "0")
+    tblPr.set("firstRow", "0")
+    for i, wv in enumerate(widths):
+        tbl.columns[i].width = Inches(wv)
+    for r in range(nr):
+        tbl.rows[r].height = Inches(height / nr)
+        vals = header if r == 0 else rows[r - 1]
+        for c in range(nc):
+            cell = tbl.cell(r, c)
+            cell.margin_left = cell.margin_right = Inches(0.12)
+            cell.margin_top = cell.margin_bottom = Inches(0.02)
+            cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+            cell.fill.solid()
+            if r == 0:
+                cell.fill.fore_color.rgb = (head_fills or {}).get(c, INK)
+            elif c == total_col:
+                cell.fill.fore_color.rgb = TOTAL_FILL
+            else:
+                cell.fill.fore_color.rgb = LIGHT if r % 2 == 0 else WHITE
+            tf = cell.text_frame
+            tf.text = vals[c]
+            para = tf.paragraphs[0]
+            para.alignment = PP_ALIGN.LEFT if c == 0 else PP_ALIGN.RIGHT
+            f = para.runs[0].font
+            f.size = Pt(size)
+            f.bold = (r == 0) or (c == total_col)
+            f.color.rgb = WHITE if r == 0 else INK
+
+
+def share_chart(slide, cats, a, names, colors, x=0.37, y=1.3, w=8.4, h=5.1):
+    """100% stacked horizontal bars: share of series A vs B for each category (a = A's share)."""
+    from pptx.oxml.ns import qn
+    from lxml import etree
+    b = [1 - v for v in a]
+    cd = CategoryChartData()
+    cd.categories = list(reversed(cats))
+    cd.add_series(names[0], list(reversed(a)))
+    cd.add_series(names[1], list(reversed(b)))
+    ch = slide.shapes.add_chart(XL_CHART_TYPE.BAR_STACKED_100, Inches(x), Inches(y), Inches(w), Inches(h), cd).chart
+    style_chart_text(ch, 12)
+    ch.has_title = False
+    ch.has_legend = True
+    ch.legend.position = XL_LEGEND_POSITION.TOP
+    ch.legend.include_in_layout = False
+    ch.legend.font.size = Pt(12)
+    plot = ch.plots[0]
+    plot.gap_width = 55
+    plot.overlap = 100
+    for ser, col in zip(plot.series, colors):
+        ser.format.fill.solid()
+        ser.format.fill.fore_color.rgb = col
+        ser.format.line.color.rgb = WHITE
+        ser.format.line.width = Pt(1.5)
+        dl = ser.data_labels
+        dl.show_value = True
+        dl.number_format = "0%"
+        dl.number_format_is_linked = False
+        dl.position = XL_LABEL_POSITION.CENTER
+        dl.font.size = Pt(12)
+        dl.font.bold = True
+        dl.font.color.rgb = WHITE
+    ch.value_axis.visible = False
+    ch.value_axis.has_major_gridlines = False
+    ch.category_axis.format.line.fill.background()
+    ch.category_axis.tick_labels.font.size = Pt(13)
+    # hide labels on slivers too thin to hold them (< 6%): per-point <c:dLbl><c:delete/>
+    for si, vals in enumerate((list(reversed(a)), list(reversed(b)))):
+        dLbls = plot.series[si]._element.find(qn("c:dLbls"))
+        for pi, v in enumerate(vals):
+            if v < 0.06:
+                d = etree.Element(qn("c:dLbl"))
+                etree.SubElement(d, qn("c:idx")).set("val", str(pi))
+                etree.SubElement(d, qn("c:delete")).set("val", "1")
+                dLbls.insert(0, d)
+    return b
+
+
+def tiles(slide, items, cols=3, top=1.4, tw=4.0, th=1.75, gx=0.3, gy=0.3, val_size=40):
+    for i, (val, lab, hero) in enumerate(items):
+        x = 0.37 + (i % cols) * (tw + gx)
+        y = top + (i // cols) * (th + gy)
+        rect(slide, x, y, tw, th, YELLOW if hero else LIGHT)
+        text(slide, x + 0.3, y + 0.22, tw - 0.6, th * 0.5, val, size=val_size, bold=True, color=INK)
+        text(slide, x + 0.3, y + th - 0.6, tw - 0.6, 0.4, lab, size=14, color=INK)
+
+
+def stat_row(slide, items, y, tw=4.0, gx=0.3):
+    for i, (val, lab) in enumerate(items):
+        x = 0.37 + i * (tw + gx)
+        text(slide, x, y, tw, 0.5, [[(val + "  ", {"size": 22, "bold": True}), (lab, {"size": 13, "color": MUTED})]])
+
+
+def load_youtube():
+    r = pd.read_csv(YT_DATA).iloc[0].to_dict()
+    r["Engagements"] = r["Shorts likes"] + r["Shorts comments"] + r["Shorts shares"]
+    return r
+
+
 # ---------------------------------------------------------------- slides
 def build():
     d = load()
     p1, p2 = d["visa_02.10"], d["visa_20.10"]
+    yt = load_youtube()
     K = ["Amount spent (USD)", "Impressions", "Reach", "Post engagements", "Clicks (all)", "Link clicks",
          "Post reactions", "Post comments", "Post shares", "Post saves"]
     tot = {k: p1[k] + p2[k] for k in K}
@@ -145,7 +257,25 @@ def build():
     tot["CPE"] = tot["Amount spent (USD)"] / tot["Post engagements"]
     tot["Frequency"] = tot["Impressions"] / tot["Reach (dedup)"]
     er = lambda r: r["Post engagements"] / r["Impressions"]
-    ctr = lambda r: r["Clicks (all)"] / r["Impressions"]
+
+    yt["Frequency"] = yt["Impressions"] / yt["Unique users"]
+    yt["CPM"] = yt["Cost (USD)"] / yt["Impressions"] * 1000
+    yt["CPE"] = yt["Cost (USD)"] / yt["Engagements"]
+    yt["CPV"] = yt["Cost (USD)"] / yt["TrueView views"]
+
+    # both platforms (reach is summed: platforms cannot de-duplicate each other's audiences)
+    all_ = {
+        "spend": tot["Amount spent (USD)"] + yt["Cost (USD)"],
+        "impr": tot["Impressions"] + yt["Impressions"],
+        "reach": tot["Reach (dedup)"] + yt["Unique users"],
+        "eng": tot["Post engagements"] + yt["Engagements"],
+        "clicks": tot["Clicks (all)"] + yt["Clicks"],
+        "likes": tot["Post reactions"] + yt["Shorts likes"],
+        "comments": tot["Post comments"] + yt["Shorts comments"],
+        "shares": tot["Post shares"] + yt["Shorts shares"],
+    }
+    all_["CPM"] = all_["spend"] / all_["impr"] * 1000
+    all_["CPE"] = all_["spend"] / all_["eng"]
 
     prs = Presentation(TEMPLATE)
     remove_all_slides(prs)
@@ -156,7 +286,7 @@ def build():
     sub = s.placeholders[1]
     sub.text_frame.text = "NFC ödənişlərə 10% endirim kampaniyası"
     pp = sub.text_frame.add_paragraph()
-    pp.text = "Meta reklam hesabatı · 1–31 oktyabr 2026"
+    pp.text = "Meta + YouTube hesabatı · oktyabr 2026"
 
     # 2. Campaign overview ---------------------------------------------
     s = content_slide(prs, "Kampaniya haqqında")
@@ -165,9 +295,10 @@ def build():
         ("Müddət", "1–31 oktyabr 2026"),
         ("Filiallar", "8 ticarət mərkəzi: Gənclik Mall, Park Bulvar, 28 Mall, Dəniz Mall, Crescent Mall, "
                       "Metropark, Sevinc Mall, Gəncə Mall"),
-        ("Paylaşım", "mcdonalds.az × visaaz birgə Instagram postu (1 oktyabr)"),
-        ("Reklam", "Meta (Facebook + Instagram) üzərində 2 reklam: visa_02.10 – əhatə (Reach) kampaniyası, "
-                   "visa_20.10 – qarşılıqlı əlaqə (Engagement) kampaniyası"),
+        ("Meta (Facebook + Instagram)", "mcdonalds.az × visaaz birgə postu, 2 reklam: visa_02.10 – əhatə (Reach), "
+                                        "visa_20.10 – qarşılıqlı əlaqə (Engagement)"),
+        ("YouTube (Google Ads)", "Visa_Reach_Oct'26 – video kampaniya (Efficient reach, Target CPM), "
+                                 "25 oktyabrdan başlayıb"),
     ]
     y = 1.45
     for label, body in items:
@@ -175,46 +306,78 @@ def build():
         text(s, 0.6, y, 7.3, 0.3, label.upper(), size=11, bold=True, color=RED)
         text(s, 0.6, y + 0.3, 7.3, 0.6, body, size=15, color=INK)
         y += 1.0
-    # creative (screenshot of the post)
     h = 5.3
     w = h * 802 / 1004
     pic = s.shapes.add_picture(CREATIVE, Inches(12.95 - w), Inches(1.3), Inches(w), Inches(h))
     pic.line.color.rgb = LINE
     pic.line.width = Pt(0.75)
 
-    # 3. KPI summary ---------------------------------------------------
-    s = content_slide(prs, "Əsas göstəricilər")
-    tiles = [
-        ("2", "Visa paylaşımı reklam edildi", True),
-        (money(tot["Amount spent (USD)"]), "Ümumi xərc", False),
-        (n(tot["Impressions"]), "Göstərilmə (Impressions)", False),
-        (n(tot["Reach (dedup)"]), "Unikal əhatə (Reach)", False),
-        (n(tot["Post engagements"]), "Qarşılıqlı əlaqə (Engagements)", False),
-        (n(tot["Clicks (all)"]), "Kliklər (hamısı)", False),
-    ]
-    tw, th, gx, gy = 4.0, 1.75, 0.3, 0.3
-    for i, (val, lab, hero) in enumerate(tiles):
-        x = 0.37 + (i % 3) * (tw + gx)
-        y = 1.4 + (i // 3) * (th + gy)
-        rect(s, x, y, tw, th, YELLOW if hero else LIGHT)
-        text(s, x + 0.3, y + 0.25, tw - 0.6, 0.85, val, size=40, bold=True, color=INK)
-        text(s, x + 0.3, y + 1.15, tw - 0.6, 0.4, lab, size=14, color=INK)
-    y = 1.4 + 2 * (th + gy) + 0.05
-    small = [
-        (money(tot["CPM"]), "CPM (1000 göstərilmənin dəyəri)"),
-        (money(tot["CPE"]), "1 qarşılıqlı əlaqənin dəyəri (CPE)"),
-        (f"{tot['Frequency']:.2f}", "Tezlik (bir nəfərə orta göstərilmə)"),
-    ]
-    for i, (val, lab) in enumerate(small):
-        x = 0.37 + i * (tw + gx)
-        text(s, x, y, tw, 0.5, [[(val + "  ", {"size": 22, "bold": True}), (lab, {"size": 13, "color": MUTED})]])
-    footnote(s, "Mənbə: Meta Ads Manager, 1–31.10.2026, adında “visa” olan reklamlar. "
-                "Əhatə Meta tərəfindən təkrarsız hesablanır, ona görə iki reklamın cəmindən (1,286,603) azdır.")
+    # 3. KPI summary (both platforms) ------------------------------------
+    s = content_slide(prs, "Əsas göstəricilər: Meta + YouTube")
+    tiles(s, [
+        ("3", "Reklam: 2 Meta + 1 YouTube", True),
+        (money(all_["spend"]), "Ümumi xərc", False),
+        (n(all_["impr"]), "Göstərilmə (Impressions)", False),
+        (n(all_["reach"]), "Əhatə (Reach / Unique users)*", False),
+        (n(all_["eng"]), "Qarşılıqlı əlaqə**", False),
+        (n(yt["TrueView views"]), "YouTube video baxışları", False),
+    ])
+    stat_row(s, [
+        (money(all_["CPM"]), "CPM (1000 göstərilmənin dəyəri)"),
+        (money(all_["CPE"]), "1 qarşılıqlı əlaqənin dəyəri"),
+        (n(all_["clicks"]), "Kliklər (Meta)"),
+    ], y=1.4 + 2 * 2.05 + 0.05)
+    footnote(s, "* Platformalar arası təkrarsız deyil: eyni insan həm Meta-da, həm YouTube-da sayıla bilər. "
+                "** Meta: post engagements; YouTube: Shorts bəyənmə + şərh + paylaşma. "
+                "Mənbə: Meta Ads Manager (1–31.10.2026), Google Ads (1.10–4.11.2026).")
 
-    # 4. Per-post table -----------------------------------------------
-    s = content_slide(prs, "Paylaşımlar üzrə statistika")
+    # 4. Platform comparison table ---------------------------------------
+    s = content_slide(prs, "Platformalar üzrə müqayisə")
+    dash = "—"
     rows = [
-        ("Kampaniya məqsədi", "Əhatə (Reach)", "Qarşılıqlı əlaqə", "—"),
+        ("Reklam sayı", "2", "1", "3"),
+        ("Kampaniya növü", "Reach + Engagement", "Video, Efficient reach", dash),
+        ("Xərc", money(tot["Amount spent (USD)"]), money(yt["Cost (USD)"]), money(all_["spend"])),
+        ("Göstərilmə", n(tot["Impressions"]), n(yt["Impressions"]), n(all_["impr"])),
+        ("Əhatə / unikal istifadəçi", n(tot["Reach (dedup)"]), n(yt["Unique users"]), n(all_["reach"]) + "*"),
+        ("Tezlik", f"{tot['Frequency']:.2f}", f"{yt['Frequency']:.2f}", dash),
+        ("CPM", money(tot["CPM"]), money(yt["CPM"]), money(all_["CPM"])),
+        ("Video baxışları (TrueView)", dash, n(yt["TrueView views"]), n(yt["TrueView views"])),
+        ("1 baxışın dəyəri (CPV)", dash, money(yt["CPV"], 3), dash),
+        ("Qarşılıqlı əlaqə**", n(tot["Post engagements"]), n(yt["Engagements"]), n(all_["eng"])),
+        ("1 əlaqənin dəyəri", money(tot["CPE"]), money(yt["CPE"]), money(all_["CPE"])),
+        ("Reaksiyalar / bəyənmələr", n(tot["Post reactions"]), n(yt["Shorts likes"]), n(all_["likes"])),
+        ("Şərhlər", n(tot["Post comments"]), n(yt["Shorts comments"]), n(all_["comments"])),
+        ("Paylaşmalar", n(tot["Post shares"]), n(yt["Shorts shares"]), n(all_["shares"])),
+        ("Yadda saxlamalar", n(tot["Post saves"]), dash, n(tot["Post saves"])),
+        ("Kliklər", n(tot["Clicks (all)"]), n(yt["Clicks"]), n(all_["clicks"])),
+    ]
+    data_table(s, ("Göstərici", "Meta", "YouTube", "Cəmi"), rows, [3.6, 3.0, 3.0, 3.0],
+               head_fills={1: META_C, 2: YT_C}, total_col=3)
+    footnote(s, "* Platformalar arası cəm (təkrarsız deyil). ** Meta: post engagements (reaksiya, şərh, paylaşma, "
+                "yadda saxlama, klik və s.); YouTube: Shorts bəyənmə + şərh + paylaşma.")
+
+    # 5. Platform shares chart --------------------------------------------
+    s = content_slide(prs, "Büdcə və nəticələrin platformalar üzrə payı")
+    cats = ["Büdcə", "Göstərilmə", "Əhatə", "Qarşılıqlı əlaqə", "Kliklər"]
+    a = [tot["Amount spent (USD)"] / all_["spend"], tot["Impressions"] / all_["impr"],
+         tot["Reach (dedup)"] / all_["reach"], tot["Post engagements"] / all_["eng"],
+         tot["Clicks (all)"] / all_["clicks"]]
+    b = share_chart(s, cats, a, ("Meta", "YouTube"), (META_C, YT_C))
+    text(s, 9.15, 1.5, 3.8, 4.8, [
+        [("Meta", {"bold": True, "color": META_C, "size": 16})],
+        [(f"Büdcənin {pct(a[0], 0)}-i ilə göstərilmələrin {pct(a[1], 0)}-ni verdi; "
+          f"bütün kliklər ({n(tot['Clicks (all)'])}) Meta-dan gəldi.", {"size": 14, "space_after": 18})],
+        [("YouTube", {"bold": True, "color": YT_C, "size": 16})],
+        [(f"Büdcənin {pct(b[0], 0)}-i ilə əhatənin {pct(b[2], 0)}-ni və qarşılıqlı əlaqələrin "
+          f"{pct(b[3], 0)}-ni topladı ({n(yt['Shorts likes'])} bəyənmə, {n(yt['Shorts comments'])} şərh).",
+          {"size": 14})],
+    ], spacing=1.1)
+
+    # 6. Meta per-post table ----------------------------------------------
+    s = content_slide(prs, "Meta: paylaşımlar üzrə statistika")
+    rows = [
+        ("Kampaniya məqsədi", "Əhatə (Reach)", "Qarşılıqlı əlaqə", dash),
         ("Xərc", money(p1["Amount spent (USD)"]), money(p2["Amount spent (USD)"]), money(tot["Amount spent (USD)"])),
         ("Göstərilmə", n(p1["Impressions"]), n(p2["Impressions"]), n(tot["Impressions"])),
         ("Əhatə", n(p1["Reach"]), n(p2["Reach"]), n(tot["Reach (dedup)"]) + "*"),
@@ -222,7 +385,7 @@ def build():
         ("CPM", money(p1["CPM (cost per 1,000 impressions)"]), money(p2["CPM (cost per 1,000 impressions)"]),
          money(tot["CPM"])),
         ("Nəticənin dəyəri", money(p1["Cost per result"]) + " / 1000 nəfər",
-         money(p2["Cost per result"]) + " / əlaqə", "—"),
+         money(p2["Cost per result"]) + " / əlaqə", dash),
         ("Qarşılıqlı əlaqə", n(p1["Post engagements"]), n(p2["Post engagements"]), n(tot["Post engagements"])),
         ("1 əlaqənin dəyəri", money(p1["Cost per post engagement"]), money(p2["Cost per post engagement"]),
          money(tot["CPE"])),
@@ -232,104 +395,24 @@ def build():
         ("Paylaşmalar", n(p1["Post shares"]), n(p2["Post shares"]), n(tot["Post shares"])),
         ("Yadda saxlamalar", n(p1["Post saves"]), n(p2["Post saves"]), n(tot["Post saves"])),
         ("Kliklər (hamısı)", n(p1["Clicks (all)"]), n(p2["Clicks (all)"]), n(tot["Clicks (all)"])),
-        ("Link klikləri", n(p1["Link clicks"]), "—", n(tot["Link clicks"])),
+        ("Link klikləri", n(p1["Link clicks"]), dash, n(tot["Link clicks"])),
     ]
-    header = ("Göstərici", "visa_02.10", "visa_20.10", "Cəmi")
-    nr, nc = len(rows) + 1, 4
-    tbl_h = 5.05
-    gt = s.shapes.add_table(nr, nc, Inches(0.37), Inches(1.3), Inches(12.6), Inches(tbl_h))
-    tbl = gt.table
-    tblPr = tbl._tbl.tblPr
-    # drop the template's table style banding so our fills are the only fills
-    tblPr.set("bandRow", "0")
-    tblPr.set("firstRow", "0")
-    widths = [3.6, 3.0, 3.0, 3.0]
-    for i, wv in enumerate(widths):
-        tbl.columns[i].width = Inches(wv)
-    for r in range(nr):
-        tbl.rows[r].height = Inches(tbl_h / nr)
-        vals = header if r == 0 else rows[r - 1]
-        for c in range(nc):
-            cell = tbl.cell(r, c)
-            cell.margin_left = cell.margin_right = Inches(0.12)
-            cell.margin_top = cell.margin_bottom = Inches(0.02)
-            cell.vertical_anchor = MSO_ANCHOR.MIDDLE
-            cell.fill.solid()
-            if r == 0:
-                cell.fill.fore_color.rgb = RED if c in (1, 2) else INK
-            elif c == 3:
-                cell.fill.fore_color.rgb = RGBColor(0xFF, 0xF1, 0xCC)
-            else:
-                cell.fill.fore_color.rgb = LIGHT if r % 2 == 0 else WHITE
-            tf = cell.text_frame
-            tf.text = vals[c]
-            para = tf.paragraphs[0]
-            para.alignment = PP_ALIGN.LEFT if c == 0 else PP_ALIGN.RIGHT
-            f = para.runs[0].font
-            f.size = Pt(12)
-            f.bold = (r == 0) or (c == 3)
-            f.color.rgb = WHITE if r == 0 else INK
+    data_table(s, ("Göstərici", "visa_02.10", "visa_20.10", "Cəmi"), rows, [3.6, 3.0, 3.0, 3.0],
+               head_fills={1: RED, 2: RED}, total_col=3)
     footnote(s, "* Ümumi əhatə təkrarsızdır (eyni insan iki reklamı görübsə, bir dəfə sayılır). "
                 "Engagement rate = qarşılıqlı əlaqə ÷ göstərilmə.")
 
-    # 5. Share of budget vs share of results -------------------------
+    # 7. Meta: share of budget vs results per ad ------------------------
     reach_sum = p1["Reach"] + p2["Reach"]
-    cats = ["Büdcə", "Göstərilmə", "Əhatə", "Kliklər", "Qarşılıqlı əlaqə"]
     a = [p1["Amount spent (USD)"] / tot["Amount spent (USD)"], p1["Impressions"] / tot["Impressions"],
          p1["Reach"] / reach_sum, p1["Clicks (all)"] / tot["Clicks (all)"],
          p1["Post engagements"] / tot["Post engagements"]]
-    b = [1 - v for v in a]
     s = content_slide(
-        prs, "Hər reklam öz işini gördü",
-        notes="Payların hesablanması: hər göstəricidə reklamın payı = reklamın dəyəri ÷ iki reklamın cəmi. "
+        prs, "Meta: hər reklam öz işini gördü",
+        notes="Hər göstəricidə reklamın payı = reklamın dəyəri ÷ iki reklamın cəmi. "
               "Əhatə payı iki reklamın əhatəsinin cəmindən (1,286,603) hesablanıb.")
-    cd = CategoryChartData()
-    cd.categories = list(reversed(cats))
-    cd.add_series("visa_02.10 (Reach)", list(reversed(a)))
-    cd.add_series("visa_20.10 (Engagement)", list(reversed(b)))
-    gf = s.shapes.add_chart(XL_CHART_TYPE.BAR_STACKED_100, Inches(0.37), Inches(1.3), Inches(8.4), Inches(5.1), cd)
-    ch = gf.chart
-    style_chart_text(ch, 12)
-    ch.has_legend = True
-    ch.legend.position = XL_LEGEND_POSITION.TOP
-    ch.legend.include_in_layout = False
-    ch.legend.font.size = Pt(12)
-    plot = ch.plots[0]
-    plot.gap_width = 55
-    plot.overlap = 100
-    for ser, col in zip(plot.series, (RED, GOLD)):
-        ser.format.fill.solid()
-        ser.format.fill.fore_color.rgb = col
-        ser.format.line.color.rgb = WHITE
-        ser.format.line.width = Pt(1.5)
-    for ser in plot.series:
-        dl = ser.data_labels
-        dl.show_value = True
-        dl.number_format = "0%"
-        dl.number_format_is_linked = False
-        dl.position = XL_LABEL_POSITION.CENTER
-        dl.font.size = Pt(12)
-        dl.font.bold = True
-        dl.font.color.rgb = WHITE
-    va = ch.value_axis
-    va.visible = False
-    va.has_major_gridlines = False
-    ca = ch.category_axis
-    ca.format.line.fill.background()
-    ca.tick_labels.font.size = Pt(13)
-    # hide labels on slivers too thin to hold them (< 6%): per-point <c:dLbl><c:delete/>
-    from pptx.oxml.ns import qn
-    from lxml import etree
-    for si, vals in enumerate((list(reversed(a)), list(reversed(b)))):
-        ser = plot.series[si]._element
-        dLbls = ser.find(qn("c:dLbls"))
-        for pi, v in enumerate(vals):
-            if v < 0.06:
-                d = etree.SubElement(dLbls, qn("c:dLbl"))
-                etree.SubElement(d, qn("c:idx")).set("val", str(pi))
-                etree.SubElement(d, qn("c:delete")).set("val", "1")
-                dLbls.remove(d)
-                dLbls.insert(0, d)
+    b = share_chart(s, ["Büdcə", "Göstərilmə", "Əhatə", "Kliklər", "Qarşılıqlı əlaqə"], a,
+                    ("visa_02.10 (Reach)", "visa_20.10 (Engagement)"), (RED, GOLD))
     text(s, 9.15, 1.5, 3.8, 4.8, [
         [("visa_02.10", {"bold": True, "color": RED, "size": 16})],
         [(f"Büdcənin {pct(a[0], 0)}-i ilə göstərilmələrin {pct(a[1], 0)}-ni və əhatənin {pct(a[2], 0)}-ni verdi. "
@@ -339,8 +422,8 @@ def build():
           f"({n(p2['Post engagements'])} əlaqə, onlardan {n(p2['Post reactions'])} reaksiya).", {"size": 14})],
     ], spacing=1.1)
 
-    # 6. Efficiency: two small charts (different scales -> separate) --
-    s = content_slide(prs, "Səmərəlilik: CPM və CPE")
+    # 8. Meta efficiency: two small charts (different scales -> separate) --
+    s = content_slide(prs, "Meta: səmərəlilik (CPM və CPE)")
 
     def mini(x, title, v1, v2, sub):
         text(s, x, 1.35, 6.0, 0.4, title, size=16, bold=True)
@@ -348,8 +431,8 @@ def build():
         cd = CategoryChartData()
         cd.categories = ["visa_02.10\n(Reach)", "visa_20.10\n(Engagement)"]
         cd.add_series(title, [v1, v2])
-        gf = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(x), Inches(2.15), Inches(5.9), Inches(3.55), cd)
-        ch = gf.chart
+        ch = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(x), Inches(2.15), Inches(5.9), Inches(3.55),
+                                cd).chart
         style_chart_text(ch, 12)
         ch.has_title = False
         ch.has_legend = False
@@ -384,25 +467,44 @@ def build():
          "Bu, iki reklamın fərqli məqsədlərlə qurulmasının düzgün olduğunu göstərir.", {}),
     ]], size=13)
 
-    # 7. Conclusions --------------------------------------------------
+    # 9. YouTube ---------------------------------------------------------
+    s = content_slide(prs, "YouTube: Visa_Reach_Oct'26")
+    tiles(s, [
+        (money(yt["Cost (USD)"]), "Xərc (büdcə $1,400)", True),
+        (n(yt["Impressions"]), "Göstərilmə", False),
+        (n(yt["Unique users"]), "Unikal istifadəçi", False),
+        (n(yt["TrueView views"]), "Video baxışları (TrueView)", False),
+        (n(yt["Shorts likes"]), "Shorts bəyənmələri", False),
+        (n(yt["Shorts comments"] + yt["Shorts shares"]),
+         f"Shorts şərh ({n(yt['Shorts comments'])}) + paylaşma ({n(yt['Shorts shares'])})", False),
+    ])
+    stat_row(s, [
+        (money(yt["CPM"]), "CPM (1000 göstərilmənin dəyəri)"),
+        (money(yt["CPV"], 3), "1 baxışın dəyəri (CPV)"),
+        (f"{yt['Frequency']:.2f}", "Tezlik (bir istifadəçiyə orta göstərilmə)"),
+    ], y=1.4 + 2 * 2.05 + 0.05)
+    footnote(s, "Video kampaniya, Efficient reach, Target CPM; 25 oktyabrdan başlayıb, status: başa çatıb. "
+                "Məqsəd əhatə olduğundan kliklər hədəflənməyib (0 klik). Mənbə: Google Ads, 1.10–4.11.2026.")
+
+    # 10. Conclusions -------------------------------------------------
     s = content_slide(prs, "Nəticələr və tövsiyələr")
     rect(s, 0.37, 1.35, 6.1, 5.1, LIGHT)
     rect(s, 6.87, 1.35, 6.1, 5.1, LIGHT)
     rect(s, 0.37, 1.35, 6.1, 0.08, RED)
     rect(s, 6.87, 1.35, 6.1, 0.08, YELLOW)
     concl = [
-        f"Oktyabrda Visa təklifi üçün 2 paylaşım reklam edildi, ümumi xərc {money(tot['Amount spent (USD)'])}.",
-        f"Kampaniya {tot['Reach (dedup)'] / 1e6:.2f} mln unikal istifadəçiyə çatdı və "
-        f"{tot['Impressions'] / 1e6:.2f} mln göstərilmə qazandı (CPM {money(tot['CPM'])}).",
-        f"Ümumilikdə {n(tot['Post engagements'])} qarşılıqlı əlaqə: {n(tot['Post reactions'])} reaksiya, "
-        f"{n(tot['Post shares'])} paylaşma, {n(tot['Post saves'])} yadda saxlama, {n(tot['Post comments'])} şərh.",
-        "Reach + Engagement birləşməsi effektiv işlədi: biri geniş əhatə, digəri ucuz qarşılıqlı əlaqə verdi.",
+        f"Visa təklifi üçün 3 reklam yayımlandı (2 Meta, 1 YouTube), ümumi xərc {money(all_['spend'])}.",
+        f"Kampaniya {all_['impr'] / 1e6:.2f} mln göstərilmə və {all_['reach'] / 1e6:.2f} mln əhatə qazandı "
+        f"(CPM {money(all_['CPM'])}).",
+        f"{n(all_['eng'])} qarşılıqlı əlaqə: {pct(yt['Engagements'] / all_['eng'], 0)}-i YouTube Shorts-dan "
+        f"({n(yt['Shorts likes'])} bəyənmə, {n(yt['Shorts comments'])} şərh).",
+        "Meta-da Reach + Engagement birləşməsi effektiv işlədi: biri geniş əhatə, digəri ucuz qarşılıqlı əlaqə verdi.",
     ]
     recs = [
-        "Növbəti partnyor kampaniyalarında eyni iki mərhələli modeli saxlamaq: əvvəl geniş əhatə, sonra xatırlatma/engagement.",
+        "Növbəti partnyor kampaniyalarında eyni modeli saxlamaq: geniş əhatə (Meta + YouTube), sonra engagement.",
         "Təklif yalnız 8 ticarət mərkəzində keçərli olduğundan, həmin ünvanlar ətrafında lokasiya hədəfləməsini sınamaq.",
-        "Kampaniyanın satışa təsirini ölçmək üçün Visa tərəfindən endirimli NFC tranzaksiyalarının sayını almaq "
-        "və reklam göstəriciləri ilə müqayisə etmək.",
+        "Satışa təsiri ölçmək üçün Visa tərəfindən endirimli NFC tranzaksiyalarının sayını alıb "
+        "reklam göstəriciləri ilə müqayisə etmək.",
     ]
 
     def bullets(x, head, items, col):
@@ -414,7 +516,7 @@ def build():
     bullets(0.37, "Nəticələr", concl, RED)
     bullets(6.87, "Tövsiyələr", recs, INK)
 
-    # 8. Close ----------------------------------------------------------
+    # 11. Close ---------------------------------------------------------
     s = prs.slides.add_slide(prs.slide_layouts[L_CLOSE])
     s.shapes.title.text = "Təşəkkür edirik!"
 

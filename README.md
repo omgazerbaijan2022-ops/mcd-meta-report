@@ -56,11 +56,13 @@ Until these files are added, the cover shows clearly marked logo placeholders an
 
 | File | What it is |
 |---|---|
-| `visa/McDonalds_AZ_Visa_Report_Oct_2026.pdf` | 8-page client PDF: cover, campaign, key metrics, per-post table, budget vs results shares, CPM/CPE, conclusions |
+| `visa/McDonalds_AZ_Visa_Report_Oct_2026.pdf` | 11-page client PDF covering Meta and YouTube: cover, campaign, combined key metrics, Meta vs YouTube table and shares, Meta per-ad table, shares and CPM/CPE, YouTube page, conclusions |
 | `visa/McDonalds_AZ_Visa_Report_Oct_2026.pptx` | The same report, editable, built on the client's McDonald's template |
 
 ```bash
-cd build && python3 visa_report.py   # data/visa_report.xlsx + data/visa_template.pptx -> visa/*.pptx + *.pdf
+cd build && python3 visa_report.py   # data/visa_report.xlsx + data/visa_youtube.csv + data/visa_template.pptx -> visa/*.pptx + *.pdf
 ```
+
+`data/visa_youtube.csv` is the `Visa_Reach_Oct'26` campaign row typed in from a Google Ads screenshot (range 1 Oct to 4 Nov 2026). Replace it with a Google Ads export if one is available.
 
 The PDF is exported with LibreOffice, which replaces the Speedee font with a fallback. For the exact brand font, open the .pptx in PowerPoint and use File > Export > PDF. `assets/visa_post_creative.jpg` is cropped from a screenshot of the Instagram post; replace it with the original creative for a sharper image.
