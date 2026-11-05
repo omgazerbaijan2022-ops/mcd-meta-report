@@ -133,92 +133,73 @@ def footnote(slide, t):
     text(slide, 0.37, 6.55, 12.0, 0.3, t, size=9, color=MUTED)
 
 
-# ---------------------------------------------------------------- reusable blocks
-SECTION_FILL = RGBColor(0xFF, 0xE3, 0x8F)
-POST_URL = "https://www.instagram.com/p/Dd88Z4fNag3/"
-
-
-def data_table(slide, header, rows, widths, x, top, row_h=0.3, size=11, head_fills=None):
-    """rows: tuple of cells, or a str for a full-width section row. A cell may be (text, url)."""
-    nr, nc = len(rows) + 1, len(header)
-    tbl = slide.shapes.add_table(nr, nc, Inches(x), Inches(top), Inches(sum(widths)), Inches(row_h * nr)).table
-    tblPr = tbl._tbl.tblPr
-    # drop the template's table style banding so our fills are the only fills
-    tblPr.set("bandRow", "0")
-    tblPr.set("firstRow", "0")
-    for i, wv in enumerate(widths):
-        tbl.columns[i].width = Inches(wv)
-    band = 0
-    for r in range(nr):
-        tbl.rows[r].height = Inches(row_h)
-        vals = header if r == 0 else rows[r - 1]
-        section = isinstance(vals, str)
-        if section:
-            tbl.cell(r, 0).merge(tbl.cell(r, nc - 1))
-            vals = (vals,) + ("",) * (nc - 1)
-            band = 0
-        else:
-            band += 1
-        for c in range(nc):
-            cell = tbl.cell(r, c)
-            cell.margin_left = cell.margin_right = Inches(0.1)
-            cell.margin_top = cell.margin_bottom = Inches(0.02)
-            cell.vertical_anchor = MSO_ANCHOR.MIDDLE
-            cell.fill.solid()
-            if r == 0:
-                cell.fill.fore_color.rgb = (head_fills or {}).get(c, INK)
-            elif section:
-                cell.fill.fore_color.rgb = SECTION_FILL
-            else:
-                cell.fill.fore_color.rgb = LIGHT if band % 2 == 0 else WHITE
-            if section and c > 0:
-                continue
-            v = vals[c]
-            url = None
-            if isinstance(v, tuple):
-                v, url = v
-            tf = cell.text_frame
-            tf.text = v
-            para = tf.paragraphs[0]
-            para.alignment = PP_ALIGN.LEFT if (c == 0 or section) else PP_ALIGN.RIGHT
-            run = para.runs[0]
-            f = run.font
-            f.size = Pt(size - 1 if section else size)
-            f.bold = (r == 0) or section
-            f.color.rgb = WHITE if r == 0 else INK
-            if url:
-                run.hyperlink.address = url
-                f.color.rgb = RGBColor(0x1F, 0x5F, 0xA8)
-                f.underline = True
-
-
-def insight(slide, x, y, w, runs):
-    rect(slide, x, y, 0.08, 0.62, RED)
-    text(slide, x + 0.22, y, w - 0.22, 0.65, [runs], size=13, anchor=MSO_ANCHOR.MIDDLE, spacing=1.05)
+# ---------------------------------------------------------------- metric pages (red McDonald's style)
+WATERMARK = os.path.join(ROOT, "assets", "arch_watermark.png")   # template arches, tinted a shade off the red
+L_BLANK = 61
+SOFT = RGBColor(0xFF, 0xD6, 0xD7)        # secondary text on red
 
 
 def load_youtube():
     return pd.read_csv(YT_DATA).iloc[0].to_dict()
 
 
+def line(slide, x1, y, x2, color, width=1.0):
+    from pptx.enum.shapes import MSO_CONNECTOR
+    c = slide.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, Inches(x1), Inches(y), Inches(x2), Inches(y))
+    c.line.color.rgb = color
+    c.line.width = Pt(width)
+    return c
+
+
+X0, GW = 0.65, 12.03          # grid left edge and width (4 columns)
+COLW = GW / 4
+
+
+def metric_page(prs, platform, subtitle, rows, source):
+    """rows: list of (groups, cells) where groups = [(tag, n_cols)] and cells = [(title, desc, value)] x4."""
+    s = prs.slides.add_slide(prs.slide_layouts[L_BLANK])
+    s.background.fill.solid()
+    s.background.fill.fore_color.rgb = RED
+    # faint golden-arches watermark, bottom right, bleeding off the page
+    s.shapes.add_picture(WATERMARK, Inches(7.4), Inches(3.2), Inches(6.6), Inches(6.6 * 2101 / 2401))
+
+    # header: platform ——— period
+    text(s, X0, 0.42, 3.2, 0.45, platform, size=22, bold=True, color=WHITE)
+    text(s, X0, 0.9, 6.0, 0.3, subtitle, size=11, color=SOFT)
+    line(s, X0 + 3.0, 0.66, 9.9, WHITE, 0.75)
+    text(s, 10.1, 0.42, 2.58, 0.45, "Oktyabr 2026", size=22, bold=True, color=YELLOW, align=PP_ALIGN.RIGHT)
+
+    y = 1.55
+    for groups, cells in rows:
+        col = 0
+        for tag, span in groups:
+            gx = X0 + col * COLW
+            text(s, gx, y, span * COLW - 0.3, 0.25, tag.upper(), size=10, bold=True, color=YELLOW)
+            line(s, gx, y + 0.32, gx + span * COLW - 0.3, YELLOW, 1.0)
+            col += span
+        for i, (title, desc, val) in enumerate(cells):
+            cx = X0 + i * COLW
+            text(s, cx, y + 0.48, COLW - 0.3, 0.3, title, size=13, bold=True, color=WHITE)
+            text(s, cx, y + 0.78, COLW - 0.3, 0.3, desc, size=9.5, color=SOFT)
+            text(s, cx, y + 1.06, COLW - 0.3, 0.6, val, size=32, bold=True, color=YELLOW)
+        y += 1.85
+    text(s, X0, 7.02, 11.0, 0.25, source, size=8.5, color=SOFT)
+    return s
+
+
 # ---------------------------------------------------------------- slides
-# Short format: cover, one page per platform, close. Rows follow the client's metric list:
-# common rows for every ad, + Frequency/CPM for reach ads, + engagement rows for engagement ads.
-RX, RW = 4.75, 8.22          # right-hand column (left column holds the creative / campaign card)
-COMMON = "Hər iki reklam üçün"
-REACH_X = "Reach reklamı üçün"
-ENG_X = "Engagement reklamı üçün"
-
-
+# Short format: cover, one metric page per platform, close. Metrics follow the client's list:
+# spend / reach / impressions, + frequency & CPM for reach ads,
+# + engagements, cost per engagement, reactions, comments, shares, saves for engagement ads.
 def build():
     d = load()
     p1, p2 = d["visa_02.10"], d["visa_20.10"]
     yt = load_youtube()
     yt["Frequency"] = yt["Impressions"] / yt["Unique users"]
     yt["CPM"] = yt["Cost (USD)"] / yt["Impressions"] * 1000
-    dash = "—"
-    # Pending from the client team: exact ad dates and the links of the 2nd Meta post and the YouTube video.
-    TBC = "dəqiqləşdirilir"
+    meta_spend = p1["Amount spent (USD)"] + p2["Amount spent (USD)"]
+    meta_impr = p1["Impressions"] + p2["Impressions"]
+    META_REACH = 1_267_297   # de-duplicated across both ads (total row of the Meta export)
 
     prs = Presentation(TEMPLATE)
     remove_all_slides(prs)
@@ -232,77 +213,49 @@ def build():
     pp.text = "Meta + YouTube hesabatı · oktyabr 2026"
 
     # 2. Meta ----------------------------------------------------------
-    s = content_slide(prs, "Meta (Facebook + Instagram)")
-    h = 5.15
-    w = h * 802 / 1004
-    pic = s.shapes.add_picture(CREATIVE, Inches(0.37), Inches(1.3), Inches(w), Inches(h))
-    pic.line.color.rgb = LINE
-    pic.line.width = Pt(0.75)
-    rows = [
-        COMMON,
-        ("Postun linki", ("instagram.com/p/Dd88Z4fNag3", POST_URL), TBC),
-        ("Reklam məqsədi", "Reach", "Engagement"),
-        ("Reklam tarixləri", TBC, TBC),
-        ("Xərc (Spend)", money(p1["Amount spent (USD)"]), money(p2["Amount spent (USD)"])),
-        ("Əhatə (Reach)", n(p1["Reach"]), n(p2["Reach"])),
-        ("Göstərilmə (Impressions)", n(p1["Impressions"]), n(p2["Impressions"])),
-        REACH_X,
-        ("Tezlik (Frequency)", f"{p1['Frequency']:.2f}", dash),
-        ("CPM", money(p1["CPM (cost per 1,000 impressions)"]), dash),
-        ENG_X,
-        ("Post engagements", dash, n(p2["Post engagements"])),
-        ("Cost per post engagement", dash, money(p2["Cost per post engagement"])),
-        ("Reaksiyalar (Reactions)", dash, n(p2["Post reactions"])),
-        ("Şərhlər (Comments)", dash, n(p2["Post comments"])),
-        ("Paylaşmalar (Shares)", dash, n(p2["Post shares"])),
-        ("Yadda saxlamalar (Saves)", dash, n(p2["Post saves"])),
-    ]
-    data_table(s, ("Göstərici", "visa_02.10 · Reach", "visa_20.10 · Engagement"), rows, [3.0, 2.6, 2.62],
-               RX, 1.3, row_h=0.25, head_fills={1: RED, 2: RED})
-    insight(s, RX, 5.86, RW, [
-        ("Cəmi: ", {"bold": True}),
-        (f"{money(p1['Amount spent (USD)'] + p2['Amount spent (USD)'])} xərc, "
-         f"{n(p1['Impressions'] + p2['Impressions'])} göstərilmə, 1,267,297 təkrarsız əhatə.", {}),
-    ])
-    footnote(s, "Mənbə: Meta Ads Manager, 1–31.10.2026, adında “visa” olan reklamlar. "
-                "Cəmi əhatə Meta tərəfindən təkrarsız hesablanır.")
+    metric_page(prs, "Meta Ads", "Facebook + Instagram · Visa kampaniyası", [
+        ([("Ümumi nəticə", 4)], [
+            ("Post sayı", "Visa ilə bağlı reklam olunan postlar", "2"),
+            ("Xərclənmiş büdcə", "Spend · reklamlara xərclənən məbləğ", money(meta_spend)),
+            ("Əhatə", "Reach · reklamı görən unikal insanlar", n(META_REACH)),
+            ("Göstərilmə", "Impressions · reklamın göstərilmə sayı", n(meta_impr)),
+        ]),
+        ([("Reach reklamı · visa_02.10", 2), ("Engagement reklamı · visa_20.10", 2)], [
+            ("Tezlik", "Frequency · bir nəfərə orta göstərilmə", f"{p1['Frequency']:.2f}"),
+            ("1000 göstərilmənin dəyəri", "CPM (cost per 1,000 impressions)",
+             money(p1["CPM (cost per 1,000 impressions)"])),
+            ("Engagement", "Post engagements · posta edilən əlaqələr", n(p2["Post engagements"])),
+            ("1 engagement-in dəyəri", "Cost per post engagement", money(p2["Cost per post engagement"])),
+        ]),
+        ([("Engagement reklamı · posta reaksiyalar", 4)], [
+            ("Reaksiyalar", "Reactions / likes", n(p2["Post reactions"])),
+            ("Şərhlər", "Comments", n(p2["Post comments"])),
+            ("Paylaşmalar", "Shares", n(p2["Post shares"])),
+            ("Yadda saxlamalar", "Saves", n(p2["Post saves"])),
+        ]),
+    ], "Mənbə: Meta Ads Manager, 1–31.10.2026. Əhatə iki reklam üzrə təkrarsız hesablanıb.")
 
     # 3. YouTube -------------------------------------------------------
-    s = content_slide(prs, "YouTube (Google Ads)")
-    rect(s, 0.37, 1.3, w, h, LIGHT)
-    rect(s, 0.37, 1.3, w, 0.08, RED)
-    card = [
-        ("Kampaniya", "Visa_Reach_Oct'26"),
-        ("Format", "Video reklam (YouTube + Shorts)"),
-        ("Strategiya", "Efficient reach, Target CPM"),
-        ("Büdcə", money(yt["Budget (USD)"])),
-        ("Status", "Başa çatıb"),
-    ]
-    paras = []
-    for k, v in card:
-        paras.append([(k.upper(), {"size": 10, "bold": True, "color": RED})])
-        paras.append([(v, {"size": 15, "space_after": 12})])
-    text(s, 0.62, 1.6, w - 0.5, h - 0.5, paras, spacing=1.05)
-    rows = [
-        COMMON,
-        ("Videonun linki", TBC),
-        ("Reklam məqsədi", "Reach"),
-        ("Reklam tarixləri", "25.10.2026 – " + TBC),
-        ("Xərc (Spend)", money(yt["Cost (USD)"])),
-        ("Əhatə (Unique users)", n(yt["Unique users"])),
-        ("Göstərilmə (Impressions)", n(yt["Impressions"])),
-        REACH_X,
-        ("Tezlik (Frequency)", f"{yt['Frequency']:.2f}"),
-        ("CPM", money(yt["CPM"])),
-    ]
-    data_table(s, ("Göstərici", "Visa_Reach_Oct'26 · Reach"), rows, [4.6, 3.62],
-               RX, 1.3, row_h=0.4, head_fills={1: RED})
-    insight(s, RX, 5.85, RW, [
-        ("Nəticə: ", {"bold": True}),
-        (f"{money(yt['Cost (USD)'])} xərclə {n(yt['Unique users'])} unikal istifadəçiyə çatıldı, "
-         f"{n(yt['Impressions'])} göstərilmə, CPM {money(yt['CPM'])}.", {}),
-    ])
-    footnote(s, "Mənbə: Google Ads, 1.10–4.11.2026. Əhatə = Unique users (Google Ads).")
+    metric_page(prs, "YouTube Ads", "Google Ads · video kampaniya Visa_Reach_Oct'26 (25 oktyabrdan)", [
+        ([("Ümumi nəticə", 4)], [
+            ("Kampaniya sayı", "Visa ilə bağlı video kampaniya", "1"),
+            ("Xərclənmiş büdcə", f"Spend · büdcə {money(yt['Budget (USD)'])}", money(yt["Cost (USD)"])),
+            ("Əhatə", "Reach · unikal istifadəçilər", n(yt["Unique users"])),
+            ("Göstərilmə", "Impressions · reklamın göstərilmə sayı", n(yt["Impressions"])),
+        ]),
+        ([("Reach reklamı · Visa_Reach_Oct'26", 2), ("Video baxışları", 2)], [
+            ("Tezlik", "Frequency · bir nəfərə orta göstərilmə", f"{yt['Frequency']:.2f}"),
+            ("1000 göstərilmənin dəyəri", "CPM (cost per 1,000 impressions)", money(yt["CPM"])),
+            ("Baxışlar", "TrueView views", n(yt["TrueView views"])),
+            ("1 baxışın dəyəri", "CPV (cost per view)", money(yt["TrueView avg. CPV (USD)"], 3)),
+        ]),
+        ([("YouTube Shorts · reaksiyalar", 4)], [
+            ("Bəyənmələr", "Likes", n(yt["Shorts likes"])),
+            ("Şərhlər", "Comments", n(yt["Shorts comments"])),
+            ("Paylaşmalar", "Shares", n(yt["Shorts shares"])),
+            ("Kliklər", "Clicks · məqsəd əhatə idi", n(yt["Clicks"])),
+        ]),
+    ], "Mənbə: Google Ads, 1.10–4.11.2026.")
 
     # 4. Close ---------------------------------------------------------
     s = prs.slides.add_slide(prs.slide_layouts[L_CLOSE])

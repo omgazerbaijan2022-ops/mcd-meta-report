@@ -56,7 +56,7 @@ Until these files are added, the cover shows clearly marked logo placeholders an
 
 | File | What it is |
 |---|---|
-| `visa/McDonalds_AZ_Visa_Report_Oct_2026.pdf` | 4-page client PDF: cover, one page for Meta, one page for YouTube, close |
+| `visa/McDonalds_AZ_Visa_Report_Oct_2026.pdf` | 4-page client PDF: cover, a red McDonald's-style metric page for Meta and one for YouTube, close |
 | `visa/McDonalds_AZ_Visa_Report_Oct_2026.pptx` | The same report, editable, built on the client's McDonald's template |
 
 ```bash
