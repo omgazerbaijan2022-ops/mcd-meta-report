@@ -51,3 +51,16 @@ The deck uses only official assets supplied by the client. Add these files to `a
 - `assets/decor_arches.png` (optional): a decorative abstract visual for the cover, used only if no product image is supplied.
 
 Until these files are added, the cover shows clearly marked logo placeholders and a vector arch illustration.
+
+### Visa × McDonald's, October 2026 (`visa/`)
+
+| File | What it is |
+|---|---|
+| `visa/McDonalds_AZ_Visa_Report_Oct_2026.pdf` | 8-page client PDF: cover, campaign, key metrics, per-post table, budget vs results shares, CPM/CPE, conclusions |
+| `visa/McDonalds_AZ_Visa_Report_Oct_2026.pptx` | The same report, editable, built on the client's McDonald's template |
+
+```bash
+cd build && python3 visa_report.py   # data/visa_report.xlsx + data/visa_template.pptx -> visa/*.pptx + *.pdf
+```
+
+The PDF is exported with LibreOffice, which replaces the Speedee font with a fallback. For the exact brand font, open the .pptx in PowerPoint and use File > Export > PDF. `assets/visa_post_creative.jpg` is cropped from a screenshot of the Instagram post; replace it with the original creative for a sharper image.
