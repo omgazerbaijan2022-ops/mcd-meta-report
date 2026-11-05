@@ -171,17 +171,19 @@ def metric_page(prs, platform, subtitle, rows, source):
 
     y = 1.55
     for groups, cells in rows:
+        cw = GW / len(cells)                  # 3 wide headline columns or 4 detail columns
+        big = len(cells) == 3
         col = 0
         for tag, span in groups:
-            gx = X0 + col * COLW
-            text(s, gx, y, span * COLW - 0.3, 0.25, tag.upper(), size=10, bold=True, color=YELLOW)
-            line(s, gx, y + 0.32, gx + span * COLW - 0.3, YELLOW, 1.0)
+            gx = X0 + col * cw
+            text(s, gx, y, span * cw - 0.3, 0.25, tag.upper(), size=10, bold=True, color=YELLOW)
+            line(s, gx, y + 0.32, gx + span * cw - 0.3, YELLOW, 1.0)
             col += span
         for i, (title, desc, val) in enumerate(cells):
-            cx = X0 + i * COLW
-            text(s, cx, y + 0.48, COLW - 0.3, 0.3, title, size=13, bold=True, color=WHITE)
-            text(s, cx, y + 0.78, COLW - 0.3, 0.3, desc, size=9.5, color=SOFT)
-            text(s, cx, y + 1.06, COLW - 0.3, 0.6, val, size=32, bold=True, color=YELLOW)
+            cx = X0 + i * cw
+            text(s, cx, y + 0.48, cw - 0.3, 0.3, title, size=14 if big else 13, bold=True, color=WHITE)
+            text(s, cx, y + 0.78, cw - 0.3, 0.3, desc, size=9.5, color=SOFT)
+            text(s, cx, y + 1.02, cw - 0.3, 0.7, val, size=38 if big else 32, bold=True, color=YELLOW)
         y += 1.85
     text(s, X0, 7.02, 11.0, 0.25, source, size=8.5, color=SOFT)
     return s
@@ -214,46 +216,43 @@ def build():
 
     # 2. Meta ----------------------------------------------------------
     metric_page(prs, "Meta Ads", "Facebook + Instagram · Visa kampaniyası", [
-        ([("Ümumi nəticə", 4)], [
-            ("Post sayı", "Visa ilə bağlı reklam olunan postlar", "2"),
-            ("Xərclənmiş büdcə", "Spend · reklamlara xərclənən məbləğ", money(meta_spend)),
-            ("Əhatə", "Reach · reklamı görən unikal insanlar", n(META_REACH)),
-            ("Göstərilmə", "Impressions · reklamın göstərilmə sayı", n(meta_impr)),
+        ([("Ümumi nəticə · 2 reklam", 3)], [
+            ("Spend", "Reklamlara xərclənən büdcə", money(meta_spend)),
+            ("Reach", "Reklamı görən unikal insanlar (təkrarsız)", n(META_REACH)),
+            ("Impressions", "Reklamın göstərilmə sayı", n(meta_impr)),
         ]),
         ([("Reach reklamı · visa_02.10", 2), ("Engagement reklamı · visa_20.10", 2)], [
-            ("Tezlik", "Frequency · bir nəfərə orta göstərilmə", f"{p1['Frequency']:.2f}"),
-            ("1000 göstərilmənin dəyəri", "CPM (cost per 1,000 impressions)",
-             money(p1["CPM (cost per 1,000 impressions)"])),
-            ("Engagement", "Post engagements · posta edilən əlaqələr", n(p2["Post engagements"])),
-            ("1 engagement-in dəyəri", "Cost per post engagement", money(p2["Cost per post engagement"])),
+            ("Frequency", "Bir nəfərə orta göstərilmə", f"{p1['Frequency']:.2f}"),
+            ("CPM", "1000 göstərilmənin dəyəri", money(p1["CPM (cost per 1,000 impressions)"])),
+            ("Post engagements", "Posta edilən bütün əlaqələr", n(p2["Post engagements"])),
+            ("Cost per engagement", "1 engagement-in dəyəri", money(p2["Cost per post engagement"])),
         ]),
         ([("Engagement reklamı · posta reaksiyalar", 4)], [
-            ("Reaksiyalar", "Reactions / likes", n(p2["Post reactions"])),
-            ("Şərhlər", "Comments", n(p2["Post comments"])),
-            ("Paylaşmalar", "Shares", n(p2["Post shares"])),
-            ("Yadda saxlamalar", "Saves", n(p2["Post saves"])),
+            ("Reactions", "Like və digər reaksiyalar", n(p2["Post reactions"])),
+            ("Comments", "Şərhlər", n(p2["Post comments"])),
+            ("Shares", "Paylaşmalar", n(p2["Post shares"])),
+            ("Saves", "Yadda saxlamalar", n(p2["Post saves"])),
         ]),
-    ], "Mənbə: Meta Ads Manager, 1–31.10.2026. Əhatə iki reklam üzrə təkrarsız hesablanıb.")
+    ], "Mənbə: Meta Ads Manager, 1–31.10.2026. Reach iki reklam üzrə təkrarsız hesablanıb.")
 
     # 3. YouTube -------------------------------------------------------
     metric_page(prs, "YouTube Ads", "Google Ads · video kampaniya Visa_Reach_Oct'26 (25 oktyabrdan)", [
-        ([("Ümumi nəticə", 4)], [
-            ("Kampaniya sayı", "Visa ilə bağlı video kampaniya", "1"),
-            ("Xərclənmiş büdcə", f"Spend · büdcə {money(yt['Budget (USD)'])}", money(yt["Cost (USD)"])),
-            ("Əhatə", "Reach · unikal istifadəçilər", n(yt["Unique users"])),
-            ("Göstərilmə", "Impressions · reklamın göstərilmə sayı", n(yt["Impressions"])),
+        ([("Ümumi nəticə", 3)], [
+            ("Spend", f"Reklama xərclənən büdcə (limit {money(yt['Budget (USD)'])})", money(yt["Cost (USD)"])),
+            ("Reach", "Reklamı görən unikal istifadəçilər", n(yt["Unique users"])),
+            ("Impressions", "Reklamın göstərilmə sayı", n(yt["Impressions"])),
         ]),
-        ([("Reach reklamı · Visa_Reach_Oct'26", 2), ("Video baxışları", 2)], [
-            ("Tezlik", "Frequency · bir nəfərə orta göstərilmə", f"{yt['Frequency']:.2f}"),
-            ("1000 göstərilmənin dəyəri", "CPM (cost per 1,000 impressions)", money(yt["CPM"])),
-            ("Baxışlar", "TrueView views", n(yt["TrueView views"])),
-            ("1 baxışın dəyəri", "CPV (cost per view)", money(yt["TrueView avg. CPV (USD)"], 3)),
+        ([("Reach reklamı · Visa_Reach_Oct'26", 2), ("Video", 2)], [
+            ("Frequency", "Bir istifadəçiyə orta göstərilmə", f"{yt['Frequency']:.2f}"),
+            ("CPM", "1000 göstərilmənin dəyəri", money(yt["CPM"])),
+            ("Views", "Video baxışları (TrueView)", n(yt["TrueView views"])),
+            ("CPV", "1 baxışın dəyəri", money(yt["TrueView avg. CPV (USD)"], 3)),
         ]),
-        ([("YouTube Shorts · reaksiyalar", 4)], [
-            ("Bəyənmələr", "Likes", n(yt["Shorts likes"])),
-            ("Şərhlər", "Comments", n(yt["Shorts comments"])),
-            ("Paylaşmalar", "Shares", n(yt["Shorts shares"])),
-            ("Kliklər", "Clicks · məqsəd əhatə idi", n(yt["Clicks"])),
+        ([("YouTube Shorts", 4)], [
+            ("Likes", "Bəyənmələr", n(yt["Shorts likes"])),
+            ("Comments", "Şərhlər", n(yt["Shorts comments"])),
+            ("Shares", "Paylaşmalar", n(yt["Shorts shares"])),
+            ("Clicks", "Məqsəd reach idi, klik hədəflənməyib", n(yt["Clicks"])),
         ]),
     ], "Mənbə: Google Ads, 1.10–4.11.2026.")
 
