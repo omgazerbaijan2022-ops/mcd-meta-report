@@ -1,7 +1,8 @@
 """Visa x McDonald's (October 2026) report: Meta + YouTube (Google Ads).
 
 data/visa_report.xlsx (Meta export) + data/visa_youtube.csv (Google Ads campaign row)
-+ data/visa_template.pptx -> visa/McDonalds_AZ_Visa_Report_Oct_2026.pptx (+ .pdf)
++ data/visa_template.pptx -> visa/McDonalds_AZ_Visa_Report_Oct_2026.pptx (+ .pdf), red metric pages
+-> visa/McDonalds_AZ_Visa_Report_Oct_2026_yellow.pptx (+ .pdf), yellow metric pages
 
 Run from build/:  python3 visa_report.py
 The PDF is produced with LibreOffice (soffice). For the exact brand font
@@ -134,9 +135,14 @@ def footnote(slide, t):
 
 
 # ---------------------------------------------------------------- metric pages (red McDonald's style)
-WATERMARK = os.path.join(ROOT, "assets", "arch_watermark.png")   # template arches, tinted a shade off the red
+# Two colour variants of the metric pages. Watermark = template arches tinted a shade off the background.
+THEMES = {
+    "red": dict(bg=RED, header=WHITE, accent=YELLOW, title=WHITE, desc=RGBColor(0xFF, 0xD6, 0xD7), value=YELLOW,
+                rule=WHITE, watermark=os.path.join(ROOT, "assets", "arch_watermark.png"), suffix=""),
+    "yellow": dict(bg=YELLOW, header=RED, accent=RED, title=RED, desc=RGBColor(0x8A, 0x00, 0x04), value=RED,
+                   rule=RED, watermark=os.path.join(ROOT, "assets", "arch_watermark_yellow.png"), suffix="_yellow"),
+}
 L_BLANK = 61
-SOFT = RGBColor(0xFF, 0xD6, 0xD7)        # secondary text on red
 
 
 def load_youtube():
@@ -155,19 +161,19 @@ X0, GW = 0.65, 12.03          # grid left edge and width (4 columns)
 COLW = GW / 4
 
 
-def metric_page(prs, platform, subtitle, rows, source):
+def metric_page(prs, platform, subtitle, rows, source, t):
     """rows: list of (groups, cells) where groups = [(tag, n_cols)] and cells = [(title, desc, value)] x4."""
     s = prs.slides.add_slide(prs.slide_layouts[L_BLANK])
     s.background.fill.solid()
-    s.background.fill.fore_color.rgb = RED
+    s.background.fill.fore_color.rgb = t["bg"]
     # faint golden-arches watermark, bottom right, bleeding off the page
-    s.shapes.add_picture(WATERMARK, Inches(7.4), Inches(3.2), Inches(6.6), Inches(6.6 * 2101 / 2401))
+    s.shapes.add_picture(t["watermark"], Inches(7.4), Inches(3.2), Inches(6.6), Inches(6.6 * 2101 / 2401))
 
     # header: platform ——— period
-    text(s, X0, 0.42, 3.2, 0.45, platform, size=22, bold=True, color=WHITE)
-    text(s, X0, 0.9, 6.0, 0.3, subtitle, size=11, color=SOFT)
-    line(s, X0 + 3.0, 0.66, 9.9, WHITE, 0.75)
-    text(s, 10.1, 0.42, 2.58, 0.45, "Oktyabr 2026", size=22, bold=True, color=YELLOW, align=PP_ALIGN.RIGHT)
+    text(s, X0, 0.42, 3.2, 0.45, platform, size=22, bold=True, color=t["header"])
+    text(s, X0, 0.9, 6.0, 0.3, subtitle, size=11, color=t["desc"])
+    line(s, X0 + 3.0, 0.66, 9.9, t["rule"], 0.75)
+    text(s, 10.1, 0.42, 2.58, 0.45, "Oktyabr 2026", size=22, bold=True, color=t["accent"], align=PP_ALIGN.RIGHT)
 
     y = 1.55
     for groups, cells in rows:
@@ -176,16 +182,16 @@ def metric_page(prs, platform, subtitle, rows, source):
         col = 0
         for tag, span in groups:
             gx = X0 + col * cw
-            text(s, gx, y, span * cw - 0.3, 0.25, tag.upper(), size=10, bold=True, color=YELLOW)
-            line(s, gx, y + 0.32, gx + span * cw - 0.3, YELLOW, 1.0)
+            text(s, gx, y, span * cw - 0.3, 0.25, tag.upper(), size=10, bold=True, color=t["accent"])
+            line(s, gx, y + 0.32, gx + span * cw - 0.3, t["accent"], 1.0)
             col += span
         for i, (title, desc, val) in enumerate(cells):
             cx = X0 + i * cw
-            text(s, cx, y + 0.48, cw - 0.3, 0.3, title, size=14 if big else 13, bold=True, color=WHITE)
-            text(s, cx, y + 0.78, cw - 0.3, 0.3, desc, size=9.5, color=SOFT)
-            text(s, cx, y + 1.02, cw - 0.3, 0.7, val, size=38 if big else 32, bold=True, color=YELLOW)
+            text(s, cx, y + 0.48, cw - 0.3, 0.3, title, size=14 if big else 13, bold=True, color=t["title"])
+            text(s, cx, y + 0.78, cw - 0.3, 0.3, desc, size=9.5, color=t["desc"])
+            text(s, cx, y + 1.02, cw - 0.3, 0.7, val, size=38 if big else 32, bold=True, color=t["value"])
         y += 1.85
-    text(s, X0, 7.02, 11.0, 0.25, source, size=8.5, color=SOFT)
+    text(s, X0, 7.02, 11.0, 0.25, source, size=8.5, color=t["desc"])
     return s
 
 
@@ -193,7 +199,9 @@ def metric_page(prs, platform, subtitle, rows, source):
 # Short format: cover, one metric page per platform, close. Metrics follow the client's list:
 # spend / reach / impressions, + frequency & CPM for reach ads,
 # + engagements, cost per engagement, reactions, comments, shares, saves for engagement ads.
-def build():
+def build(theme="red"):
+    t = THEMES[theme]
+    out = OUT.replace(".pptx", t["suffix"] + ".pptx")
     d = load()
     p1, p2 = d["visa_02.10"], d["visa_20.10"]
     yt = load_youtube()
@@ -233,7 +241,7 @@ def build():
             ("Shares", "Paylaşmalar", n(p2["Post shares"])),
             ("Saves", "Yadda saxlamalar", n(p2["Post saves"])),
         ]),
-    ], "Mənbə: Meta Ads Manager, 1–31.10.2026. Reach iki reklam üzrə təkrarsız hesablanıb.")
+    ], "Mənbə: Meta Ads Manager, 1–31.10.2026. Reach iki reklam üzrə təkrarsız hesablanıb.", t)
 
     # 3. YouTube -------------------------------------------------------
     metric_page(prs, "YouTube Ads", "Google Ads · video kampaniya Visa_Reach_Oct'26 (25 oktyabrdan)", [
@@ -254,20 +262,21 @@ def build():
             ("Shares", "Paylaşmalar", n(yt["Shorts shares"])),
             ("Clicks", "Məqsəd reach idi, klik hədəflənməyib", n(yt["Clicks"])),
         ]),
-    ], "Mənbə: Google Ads, 1.10–4.11.2026.")
+    ], "Mənbə: Google Ads, 1.10–4.11.2026.", t)
 
     # 4. Close ---------------------------------------------------------
     s = prs.slides.add_slide(prs.slide_layouts[L_CLOSE])
     s.shapes.title.text = "Təşəkkür edirik!"
 
     os.makedirs(OUT_DIR, exist_ok=True)
-    prs.save(OUT)
-    print("wrote", OUT)
+    prs.save(out)
+    print("wrote", out)
     if "--no-pdf" not in sys.argv:
-        subprocess.run(["soffice", "--headless", "--convert-to", "pdf", "--outdir", OUT_DIR, OUT],
+        subprocess.run(["soffice", "--headless", "--convert-to", "pdf", "--outdir", OUT_DIR, out],
                        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=300)
-        print("wrote", OUT[:-5] + ".pdf")
+        print("wrote", out[:-5] + ".pdf")
 
 
 if __name__ == "__main__":
-    build()
+    for name in THEMES:
+        build(name)
