@@ -160,10 +160,11 @@ VIS_W, VIS_H, VIS_Y = 4.0, 5.0, 1.55   # right-hand visual slot (creative / vide
 VIS_X = X0 + FULL_W - VIS_W
 
 
-def metric_page(prs, platform, subtitle, rows, source, visual=None):
+def metric_page(prs, platform, subtitle, rows, source, visual=None, setup=None):
     """rows: list of (groups, cells): groups = [(tag, n_cols)], cells = [(title, desc, value)].
     visual: optional (image_path, aspect w/h, caption, url, video_path) shown on the right; the grid narrows.
-    With a video, the .pptx plays it on the slide and the image is its poster (the PDF shows the poster)."""
+    With a video, the .pptx plays it on the slide and the image is its poster (the PDF shows the poster).
+    setup: optional [(title, body, width share)] campaign setup band (objective, audience, targeting)."""
     s = prs.slides.add_slide(prs.slide_layouts[L_BLANK])
     s.background.fill.solid()
     s.background.fill.fore_color.rgb = RED
@@ -198,24 +199,41 @@ def metric_page(prs, platform, subtitle, rows, source, visual=None):
         gw = FULL_W
     compact = visual is not None
 
-    y = 1.55
-    for groups, cells in rows:
-        cw = gw / len(cells)                  # 3 wide headline columns or 4 detail columns
-        big = len(cells) == 3
+    y = 1.35 if setup else 1.55
+    if setup:
+        # campaign setup band: [(title, body, width share)] in one row above the metrics
+        text(s, X0, y, gw - 0.25, 0.25, "SETUP · TARGETING", size=10, bold=True, color=YELLOW)
+        line(s, X0, y + 0.3, X0 + gw - 0.25, YELLOW, 1.0)
+        tot_share = sum(c[2] for c in setup)
+        cx = X0
+        for title, body, share in setup:
+            w = gw * share / tot_share
+            text(s, cx, y + 0.42, w - 0.25, 0.25, title, size=11, bold=True, color=WHITE)
+            text(s, cx, y + 0.66, w - 0.25, 1.0, body, size=9, color=SOFT, spacing=1.05)
+            cx += w
+        y += 1.5
+    for ri, (groups, cells) in enumerate(rows):
+        cw = gw / len(cells)
+        big = ri == 0                         # first row = headline numbers
         col = 0
         for tag, span in groups:
             gx = X0 + col * cw
             text(s, gx, y, span * cw - 0.25, 0.25, tag.upper(), size=10, bold=True, color=YELLOW)
-            line(s, gx, y + 0.32, gx + span * cw - 0.25, YELLOW, 1.0)
+            line(s, gx, y + 0.3 if setup else y + 0.32, gx + span * cw - 0.25, YELLOW, 1.0)
             col += span
         for i, (title, desc, val) in enumerate(cells):
             cx = X0 + i * cw
+            if setup:     # tighter rows to make room for the setup band
+                text(s, cx, y + 0.36, cw - 0.2, 0.3, title, size=12, bold=True, color=WHITE)
+                text(s, cx, y + 0.59, cw - 0.2, 0.25, desc, size=8.5, color=SOFT)
+                text(s, cx, y + 0.77, cw - 0.2, 0.5, val, size=28 if big else 24, bold=True, color=YELLOW)
+                continue
             tsize = (13 if big else 12) if compact else (14 if big else 13)
             vsize = (32 if big else 26) if compact else (36 if big else 32)
             text(s, cx, y + 0.48, cw - 0.2, 0.3, title, size=tsize, bold=True, color=WHITE)
             text(s, cx, y + 0.78, cw - 0.2, 0.3, desc, size=9 if compact else 9.5, color=SOFT)
             text(s, cx, y + 1.04, cw - 0.2, 0.7, val, size=vsize, bold=True, color=YELLOW)
-        y += 1.8 if compact else 1.85
+        y += 1.38 if setup else (1.8 if compact else 1.85)
     text(s, X0, 7.02, 11.0, 0.25, source, size=8.5, color=SOFT)
     return s
 
@@ -301,7 +319,15 @@ def build():
             ("Saves", "Yadda saxlamalar", n(p2["Post saves"])),
         ]),
     ], "Mənbə: Meta Ads Manager, 1–31.10.2026. Reach iki reklam üzrə təkrarsız hesablanıb.",
-        visual=(CREATIVE, 802 / 1004, "Instagram post · mcdonalds.az × visaaz", None, None))
+        visual=(CREATIVE, 802 / 1004, "Instagram post · mcdonalds.az × visaaz", None, None),
+        setup=[
+            ("Objective", "Visa NFC təklifi keçən ticarət mərkəzlərinin ətrafında kampaniya haqqında "
+                          "məlumatlılığı artırmaq və posta aktivlik qazanmaq.", 2.6),
+            ("Target audience", "18–54 yaş, qadın və kişilər. Advantage+ audience aktivdir.", 1.9),
+            ("Targeting", "Lokasiya: McDonald's olan ticarət mərkəzləri ətrafında 1–2 km radius: Gənclik Mall, "
+                          "Park Bulvar, 28 Mall, Dəniz Mall, Crescent Mall, Metropark, Sevinc Mall, Nizami Mall, "
+                          "Gəncə Mall.", 3.3),
+        ])
 
     # 4. YouTube -------------------------------------------------------
     metric_page(prs, "YouTube Ads", "Google Ads · Visa_Reach_Oct'26 (25 oktyabrdan)", [
@@ -316,14 +342,21 @@ def build():
             ("Views", "Video baxışları", n(yt["TrueView views"])),
             ("CPV", "1 baxışın dəyəri", money(yt["TrueView avg. CPV (USD)"], 3)),
         ]),
-        ([("YouTube Shorts", 4)], [
+        ([("YouTube Shorts", 3)], [
             ("Likes", "Bəyənmələr", n(yt["Shorts likes"])),
             ("Comments", "Şərhlər", n(yt["Shorts comments"])),
             ("Shares", "Paylaşmalar", n(yt["Shorts shares"])),
-            ("Clicks", "Klik hədəflənməyib", n(yt["Clicks"])),
         ]),
     ], "Mənbə: Google Ads, 1.10–4.11.2026.",
-        visual=(YT_COVER, 9 / 16, "YouTube Shorts · videoya bax", YT_URL, YT_VIDEO))
+        visual=(YT_COVER, 9 / 16, "YouTube Shorts · videoya bax", YT_URL, YT_VIDEO),
+        setup=[
+            ("Objective", "McDonald's × Visa kampaniyası haqqında məlumatlılığı artırmaq və reklamı geniş "
+                          "auditoriyaya çatdırmaq.", 2.4),
+            ("Target audience", "18–54 yaş aralığında qadın və kişilər.", 1.6),
+            ("Targeting", "Custom segment: Google-da McDonald's, Visa və bank xidmətləri ilə bağlı axtarış edənlər. "
+                          "Axtarış sözləri: McDonald's, mcdonalds.az, “mcdonals restoranlar”, Visa, Kapital Bank, "
+                          "Leo Bank, PASHA Bank.", 4.0),
+        ])
 
     # 5. Close ---------------------------------------------------------
     s = prs.slides.add_slide(prs.slide_layouts[L_CLOSE])
