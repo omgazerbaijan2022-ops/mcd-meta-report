@@ -139,6 +139,7 @@ SOFT = RGBColor(0xFF, 0xD6, 0xD7)        # secondary text on red
 WATERMARK = os.path.join(ROOT, "assets", "arch_watermark.png")   # template arches, a shade off the red
 YT_COVER = os.path.join(ROOT, "assets", "visa_youtube_cover.jpg")  # Shorts cover (i.ytimg.com oardefault)
 YT_URL = "https://www.youtube.com/shorts/pDVNL1nRB1A"
+IG_URL = "https://www.instagram.com/p/Dd88Z4fNag3/"
 YT_VIDEO = os.path.join(ROOT, "assets", "visa_youtube_video.mp4")  # the Shorts ad itself, embedded in the .pptx
 
 
@@ -184,6 +185,8 @@ def metric_page(prs, platform, subtitle, rows, source, visual=None, setup=None):
                                      poster_frame_image=path, mime_type="video/mp4")
         else:
             pic = s.shapes.add_picture(path, Inches(x), Inches(VIS_Y), Inches(w), Inches(VIS_H))
+            if url:
+                pic.click_action.hyperlink.address = url
         pic.line.color.rgb = YELLOW
         pic.line.width = Pt(2)
         cap = text(s, VIS_X, VIS_Y + VIS_H + 0.1, VIS_W, 0.3, caption, size=10, color=SOFT, align=PP_ALIGN.CENTER)
@@ -254,7 +257,6 @@ def build():
     yt_eng = yt["Shorts likes"] + yt["Shorts comments"] + yt["Shorts shares"]
     tot = {
         "spend": meta["Amount spent (USD)"] + yt["Cost (USD)"],
-        "reach": meta["Reach"] + yt["Unique users"],          # platforms cannot de-duplicate each other
         "impr": meta["Impressions"] + yt["Impressions"],
         "eng": meta["Post engagements"] + yt_eng,
         "likes": meta["Post reactions"] + yt["Shorts likes"],
@@ -262,7 +264,6 @@ def build():
         "shares": meta["Post shares"] + yt["Shorts shares"],
         "saves": meta["Post saves"],
     }
-    tot["freq"] = tot["impr"] / tot["reach"]
     tot["cpm"] = tot["spend"] / tot["impr"] * 1000
     tot["cpe"] = tot["spend"] / tot["eng"]
 
@@ -281,13 +282,11 @@ def build():
     metric_page(prs, "Overall", "Meta + YouTube · Visa kampaniyasının ümumi nəticəsi", [
         ([("Ümumi nəticə · Meta + YouTube", 3)], [
             ("Spend", "Reklamlara xərclənən ümumi büdcə", money(tot["spend"])),
-            ("Reach", "Reklamı görən istifadəçilər*", n(tot["reach"])),
             ("Impressions", "Reklamın ümumi göstərilmə sayı", n(tot["impr"])),
-        ]),
-        ([("Səmərəlilik", 4)], [
-            ("Frequency", "Bir istifadəçiyə orta göstərilmə", f"{tot['freq']:.2f}"),
             ("CPM", "1000 göstərilmənin dəyəri", money(tot["cpm"])),
-            ("Engagements", "Bütün əlaqələr**", n(tot["eng"])),
+        ]),
+        ([("Engagement · Meta + YouTube", 2)], [
+            ("Engagements", "Bütün əlaqələr*", n(tot["eng"])),
             ("Cost per engagement", "1 engagement-in dəyəri", money(tot["cpe"])),
         ]),
         ([("Reaksiyalar · Meta + YouTube", 4)], [
@@ -296,8 +295,7 @@ def build():
             ("Shares", "Paylaşmalar", n(tot["shares"])),
             ("Saves", "Yadda saxlamalar (Meta)", n(tot["saves"])),
         ]),
-    ], "* Meta və YouTube əhatəsinin cəmi (platformalar arası təkrarsız deyil).  ** Meta post engagements + "
-       "YouTube Shorts like, şərh və paylaşmaları.  Mənbə: Meta Ads Manager, Google Ads.")
+    ], "* Meta post engagements + YouTube Shorts like, şərh və paylaşmaları.  Mənbə: Meta Ads Manager, Google Ads.")
 
     # 3. Meta ----------------------------------------------------------
     metric_page(prs, "Meta Ads", "Facebook + Instagram · Visa kampaniyası", [
@@ -319,7 +317,7 @@ def build():
             ("Saves", "Yadda saxlamalar", n(p2["Post saves"])),
         ]),
     ], "Mənbə: Meta Ads Manager, 1–31.10.2026. Reach iki reklam üzrə təkrarsız hesablanıb.",
-        visual=(CREATIVE, 802 / 1004, "Instagram post · mcdonalds.az × visaaz", None, None),
+        visual=(CREATIVE, 802 / 1004, "Instagram post · posta bax", IG_URL, None),
         setup=[
             ("Objective", "Visa NFC təklifi keçən ticarət mərkəzlərinin ətrafında kampaniya haqqında "
                           "məlumatlılığı artırmaq və posta aktivlik qazanmaq.", 2.6),
